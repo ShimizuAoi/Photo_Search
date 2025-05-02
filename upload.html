@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>画像アップロード</title>
+</head>
+<body>
+    <h1>📂 写真フォルダをアップロード</h1>
+    <input type="file" id="imageUpload" accept="image/*" multiple webkitdirectory directory><br><br>
+    <button onclick="goToNext()">次へ（マップ検索へ）</button>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
+    <script>
+        const photoData = [];
+
+        function convertToDecimal(coord) {
+            return coord[0] + coord[1] / 60 + coord[2] / 3600;
+        }
+
+        document.getElementById('imageUpload').addEventListener('change', function(event) {
+            const files = Array.from(event.target.files);
+            let processedCount = 0;
+
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        EXIF.getData(img, function() {
+                            const lat = EXIF.getTag(this, 'GPSLatitude');
+                            const lon = EXIF.getTag(this, 'GPSLongitude');
+                            const latRef = EXIF.getTag(this, 'GPSLatitudeRef') || "N";
+                            const lonRef = EXIF.getTag(this, 'GPSLongitudeRef') || "E";
+
+                            let latDecimal = null;
+                            let lonDecimal = null;
+                            if (lat && lon) {
+                                latDecimal = convertToDecimal(lat);
+                                lonDecimal = convertToDecimal(lon);
+                                if (latRef === "S") latDecimal = -latDecimal;
+                                if (lonRef === "W") lonDecimal = -lonDecimal;
+                            }
+
+                            const photoObject = {
+                                imageUrl: e.target.result,
+                                lat: latDecimal,
+                                lon: lonDecimal
+                            };
+
+                            // 住所を取得して保存
+                            if (latDecimal !== null && lonDecimal !== null) {
+                                fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latDecimal}&lon=${lonDecimal}`)
+                                    .then(res => res.json())
+                                    .then(data => {
+                                        photoObject.address = data.display_name || "住所不明";
+                                    })
+                                    .finally(() => {
+                                        photoData.push(photoObject);
+                                        processedCount++;
+                                        if (processedCount === files.length) {
+                                            localStorage.setItem('photoData', JSON.stringify(photoData)); // すべてのデータを保存
+                                            alert("全写真の読み込みが完了しました");
+                                            goToNext(); // 次のページ（map.html）へ遷移
+                                        }
+                                    });
+                            } else {
+                                // 位置情報がない場合でもデータを保存
+                                photoObject.address = "位置情報なし";
+                                photoData.push(photoObject);
+                                processedCount++;
+                                if (processedCount === files.length) {
+                                    localStorage.setItem('photoData', JSON.stringify(photoData)); // すべてのデータを保存
+                                    alert("全写真の読み込みが完了しました");
+                                    goToNext(); // 次のページ（map.html）へ遷移
+                                }
+                            }
+                        });
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        });
+
+        function goToNext() {
+            window.location.href = "map.html"; // 次のページ（map.html）へ遷移
+        }
+    </script>
+</body>
+</html>
